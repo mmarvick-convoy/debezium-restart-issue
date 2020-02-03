@@ -1,0 +1,89 @@
+version: '3'
+services:
+    postgres:
+        image: debezium/postgres:9.6
+        environment:
+            POSTGRES_USER: "postgres"
+        # Expose Postgres on port 5422
+        ports:
+            - 5422:5432
+    zookeeper:
+        image: confluentinc/cp-zookeeper:latest
+        environment:
+            ZOOKEEPER_CLIENT_PORT: 2181
+            ZOOKEEPER_TICK_TIME: 2000
+    kafka:
+        image: confluentinc/cp-kafka:latest
+        depends_on:
+            - zookeeper
+        ports:
+            - 9092:9092
+        environment:
+            KAFKA_BROKER_ID: 1
+            KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+            KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:29092,PLAINTEXT_HOST://localhost:9092
+            KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+            KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+            KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+    kafka-connect:
+        build:
+            context: ./kafka-connect
+        environment:
+            # Running locally
+            ENVIRONMENT: local
+            # Kafka connection
+            CONNECT_BOOTSTRAP_SERVERS: kafka:29092
+            CONNECT_GROUP_ID: kafkadw-connect-group
+            CONNECT_CONFIG_STORAGE_TOPIC: kafkadw-connect-configs
+            CONNECT_OFFSET_STORAGE_TOPIC: kafkadw-connect-offsets
+            CONNECT_STATUS_STORAGE_TOPIC: kafkadw-connect-status
+            # Common config
+            CONNECT_ZOOKEEPER_CONNECT: kafka:2181
+            CONNECT_KAFKA_HEAP_OPTS: -Xms8G -Xmx10G
+            KAFKA_HEAP_OPTS: -Xms8G -Xmx10G
+            CONNECT_RESET_PORT: 8083
+            CONNECT_REST_ADVERTISED_HOST_NAME: localhost
+            CONNECT_REST_ADVERTISED_PORT: 8083
+            CONNECT_CONFIG_STORAGE_REPLICATION_FACTOR: 1
+            CONNECT_OFFSET_FLUSH_INTERVAL_MS: 10000
+            CONNECT_OFFSET_FLUSH_TIMEOUT_MS: 30000
+            CONNECT_OFFSET_STORAGE_REPLICATION_FACTOR: 1
+            CONNECT_STATUS_STORAGE_REPLICATION_FACTOR: 1
+            CONNECT_KEY_CONVERTER: org.apache.kafka.connect.json.JsonConverter
+            CONNECT_VALUE_CONVERTER: org.apache.kafka.connect.json.JsonConverter
+            CONNECT_INTERNAL_KEY_CONVERTER: org.apache.kafka.connect.json.JsonConverter
+            CONNECT_INTERNAL_VALUE_CONVERTER: org.apache.kafka.connect.json.JsonConverter
+            CONNECT_CONFIG_PROVIDERS: file
+            CONNECT_CONFIG_PROVIDERS_FILE_CLASS: org.apache.kafka.common.config.provider.FileConfigProvider
+        ports:
+            - 443:443
+            - 8083:8083
+    kafka-connect-ui:
+        image: "landoop/kafka-connect-ui:0.9.7"
+        environment:
+            CONNECT_URL: "kafka-connect:8083/"
+        ports:
+            # Show the Kafka Connect UI on port 8200
+            - 8200:8000
+    kafka-rest-proxy:
+        image: "confluentinc/cp-kafka-rest:5.3.2"
+        environment:
+            KAFKA_REST_HOST_NAME: kafka-rest-proxy
+            KAFKA_REST_BOOTSTRAP_SERVERS: kafka:29092
+            KAFKA_REST_LISTENERS: http://0.0.0.0:8082
+        ports:
+            - 8082:8082
+    kafka-topis-ui:
+        image: "landoop/kafka-topics-ui"
+        environment:
+            NAME: kafkastream-prod
+            KAFKA_REST_PROXY_URL: kafka-rest-proxy:8082
+            PORT: 8400
+            PROXY: "true"
+            PROXY_SKIP_VERIFY: "true"
+            RECORD_POLL_TIMEOUT: 20000
+            MAX_BYTES: 200000
+            DEBUG_LOGS_ENABLED: "true"
+        ports:
+            # Show the Kafka Topics UI on port 8400
+            - 8400:8400
