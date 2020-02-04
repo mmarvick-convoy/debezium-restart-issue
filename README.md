@@ -70,7 +70,9 @@ chmod u+x scripts/postgres-init.sh
 4. Copy and paste the config from [postgres-connector.txt](postgres-connector.txt)
 5. Click "Create"
 
-### Generate random data on loop (Tab 2)
+### Generate data on loop (Tab 2)
+
+Generate data in batches of 100 by running the data generation script. Items have an auto-incrementing id, which helps us detect rows that don't make it to Kafka.
 
 Run:
 
@@ -86,7 +88,7 @@ chmod u+x scripts/postgres-generate-data.sh
 
 ### Run the script to check for missing data (Tab 3)
 
-Install dependencies
+First, install dependencies
 
 ```sh
 cd /scripts
@@ -94,11 +96,13 @@ yarn install
 cd ..
 ```
 
-Run:
+Then, run:
 
 ```sh
-node ./read_topics.js
+node ./scripts/read_topics.js
 ```
+
+You'll see each event get consumed in order (e.g. `Read: 1`, `Read: 2`, ...). When you see an array of items get printed out, that's an array of events that didn't make it into Kafka.
 
 ### Periodically stop / restart kafka connect (Tab 4)
 
@@ -116,7 +120,14 @@ You can also stop it for a while before restarting by running:
 docker-compose stop -t 0 kafka-connect
 ```
 
-Do this enough times, and you'll eventually reproduce the case where a batch goes missing. It usually takes us ~10 - 50 restarts to reproduce. Some tips:
+You can automate restarts on a cadence with:
+
+```sh
+for i in {1..50}; do docker-compose restart -t 0 kafka-connect; date ; sleep 45; done
+```
+
+Do enough restarts, and you'll eventually reproduce the case where a batch goes missing. It usually takes us ~10 - 50 restarts to reproduce. Some tips:
 - Shut down Kafka Connect for a while so that it has a large amount of data to catch up on
 - Do restarts of Kafka Connect while it's behind and hasn't fully caught up
+    - If you're automatically restarting Kafka Connect on a loop, you may need to shorten the restart time or let some data seed first to achieve this. Keep an eye on the number of events consumed. We seed in batches of 100, so if the script is reporting a multiple of 100 events consumed, you've probably "caught up".
 - When you do restarts, you'll notice Kafka Connect reprocesses some amount of data. Don't restart it again until it catches up with where you were before (since you know those values won't be caught missing). Leave it running long enough so that at least the LSN gets re-flushed (a few thousand values).
